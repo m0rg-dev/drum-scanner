@@ -1,0 +1,6 @@
+[submodule "PolyGear"]
+	path = PolyGear
+	url = https://github.com/dpellegr/PolyGear
+[submodule "MCAD"]
+	path = MCAD
+	url = https://github.com/openscad/MCAD
