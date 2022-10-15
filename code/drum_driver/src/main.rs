@@ -26,7 +26,6 @@ struct DeviceState {
 
 const TICKS_PER_REV: u32 = 400;
 const MICROSTEPPING: u32 = 16;
-const GEAR_RATIO: u32 = 5;
 
 impl DeviceState {
     pub fn drum_command(&mut self, rpm: u8) {
@@ -36,7 +35,7 @@ impl DeviceState {
             self.stepper_enable.set_low();
             configure_timer(
                 &self.timer,
-                ((rpm as u32) * TICKS_PER_REV * MICROSTEPPING * GEAR_RATIO) / 60,
+                ((rpm as u32) * TICKS_PER_REV * MICROSTEPPING) / 60,
             );
         } else {
             self.stepper_enable.set_high();
