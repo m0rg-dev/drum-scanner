@@ -1,0 +1,10 @@
+{
+    "nixEnvSelector.nixFile": "${workspaceRoot}/shell.nix",
+    "rust-analyzer.checkOnSave.extraArgs": [
+        "--release"
+    ],
+    "rust-analyzer.runnables.extraArgs": [
+        "--release"
+    ],
+    "rust-analyzer.checkOnSave.allTargets": false
+}
