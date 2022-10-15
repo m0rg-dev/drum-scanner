@@ -1,5 +1,6 @@
 use core::{
     cell::UnsafeCell,
+    mem::MaybeUninit,
     ops::{Deref, DerefMut},
     sync::atomic,
 };
@@ -7,16 +8,35 @@ use core::{
 use atomic::Ordering;
 
 pub struct Mutex<T> {
-    data: UnsafeCell<T>,
+    data: UnsafeCell<MaybeUninit<T>>,
     lock: UnsafeCell<u8>,
 }
 
 impl<T> Mutex<T> {
     pub const fn new(t: T) -> Mutex<T> {
         Mutex {
-            data: UnsafeCell::new(t),
+            data: UnsafeCell::new(MaybeUninit::new(t)),
             lock: UnsafeCell::new(0),
         }
+    }
+
+    // Creates a new *locked* mutex that holds no data and must be initialized
+    // with Mutex::init(T) before use.
+    pub const fn new_locked() -> Mutex<T> {
+        Mutex {
+            data: UnsafeCell::new(MaybeUninit::uninit()),
+            lock: UnsafeCell::new(1),
+        }
+    }
+
+    // Initializes a mutex that was previously created with Mutex::new_locked and
+    // unlocks it.
+    //
+    // It is undefined behavior to call this method twice on the same mutex, or on
+    // a mutex that is unlocked, or on a mutex whose lock is held elsewhere in the program.
+    pub unsafe fn init(&self, t: T) {
+        *self.data.get() = MaybeUninit::new(t);
+        *self.lock.get() = 0;
     }
 
     fn is_locked(&self) -> bool {
@@ -116,12 +136,12 @@ impl<T> Deref for MutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe { &*self.lock.data.get() }
+        unsafe { (&*self.lock.data.get()).assume_init_ref() }
     }
 }
 
 impl<T> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.lock.data.get() }
+        unsafe { (&mut *self.lock.data.get()).assume_init_mut() }
     }
 }

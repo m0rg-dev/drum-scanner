@@ -46,19 +46,15 @@ impl DeviceState {
     }
 }
 
-static STATE: Mutex<Option<DeviceState>> = Mutex::new(None);
+static STATE: Mutex<DeviceState> = Mutex::new_locked();
 
 #[arduino_hal::entry]
 fn main() -> ! {
     let dp = arduino_hal::Peripherals::take().unwrap();
     let pins = arduino_hal::pins!(dp);
-    let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
-    ufmt::uwriteln!(&mut serial, "initialized\r").void_unwrap();
-
-    {
-        let mut state = STATE.lock();
-        *state = Some(DeviceState {
+    unsafe {
+        STATE.init(DeviceState {
             drum_step: pins.d2.into_output(),
             drum_direction: pins.d5.into_output(),
             stepper_enable: pins.d8.into_output_high(),
@@ -66,6 +62,12 @@ fn main() -> ! {
             timer: dp.TC1,
         });
     }
+
+    // it is now safe to lock STATE
+
+    let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
+
+    ufmt::uwriteln!(&mut serial, "initialized\r").void_unwrap();
 
     unsafe {
         avr_device::interrupt::enable();
@@ -78,10 +80,10 @@ fn main() -> ! {
 
         if b == 0x31 {
             ufmt::uwriteln!(&mut serial, "start drum\r").void_unwrap();
-            STATE.lock().as_mut().unwrap().drum_command(60);
+            STATE.lock().drum_command(60);
         } else if b == 0x30 {
             ufmt::uwriteln!(&mut serial, "stop drum\r").void_unwrap();
-            STATE.lock().as_mut().unwrap().drum_command(0);
+            STATE.lock().drum_command(0);
         }
     }
 }
@@ -126,12 +128,9 @@ fn disable_timer(timer: &TC1) {
 
 #[avr_device::interrupt(atmega328p)]
 fn TIMER1_COMPA() {
-    let state = STATE.try_lock();
-    if let Some(mut state) = state {
-        state.as_mut().map(|state| {
-            state.drum_step.toggle();
-        });
-    }
+    STATE.try_lock().map(|mut state| {
+        state.drum_step.toggle();
+    });
 }
 
 #[no_mangle]
