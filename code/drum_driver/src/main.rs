@@ -4,6 +4,7 @@
 
 use arduino_hal::{
     clock::Clock,
+    hal::port::{PB0, PD2, PD5},
     pac::{tc1::tccr1b::CS1_A, TC1},
     port::{mode::Output, Pin},
     prelude::*,
@@ -15,10 +16,10 @@ mod mutex;
 use mutex::Mutex;
 
 struct DeviceState {
-    drum_step: Pin<Output>,
+    drum_step: Pin<Output, PD2>,
     #[allow(dead_code)]
-    drum_direction: Pin<Output>,
-    stepper_enable: Pin<Output>,
+    drum_direction: Pin<Output, PD5>,
+    stepper_enable: Pin<Output, PB0>,
     drum_speed_rpm: u8,
     timer: TC1,
 }
@@ -58,9 +59,9 @@ fn main() -> ! {
     {
         let mut state = STATE.lock();
         *state = Some(DeviceState {
-            drum_step: pins.d2.into_output().downgrade(),
-            drum_direction: pins.d5.into_output().downgrade(),
-            stepper_enable: pins.d8.into_output_high().downgrade(),
+            drum_step: pins.d2.into_output(),
+            drum_direction: pins.d5.into_output(),
+            stepper_enable: pins.d8.into_output_high(),
             drum_speed_rpm: 0,
             timer: dp.TC1,
         });

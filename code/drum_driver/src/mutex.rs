@@ -103,7 +103,6 @@ impl<'mutex, T> MutexGuard<'mutex, T> {
 }
 
 impl<'mutex, T> Drop for MutexGuard<'mutex, T> {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             // Safety: u8 read/write is atomic on AVR, and since we are a MutexGuard,
