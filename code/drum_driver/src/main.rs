@@ -20,7 +20,7 @@ struct DeviceState {
     #[allow(dead_code)]
     drum_direction: Pin<Output, PD5>,
     stepper_enable: Pin<Output, PB0>,
-    drum_speed_rpm: u8,
+    drum_speed_rpm: u32,
     timer: TC1,
 }
 
@@ -28,15 +28,12 @@ const TICKS_PER_REV: u32 = 400;
 const MICROSTEPPING: u32 = 16;
 
 impl DeviceState {
-    pub fn drum_command(&mut self, rpm: u8) {
+    pub fn drum_command(&mut self, rpm: u32) {
         self.drum_speed_rpm = rpm;
 
         if self.drum_speed_rpm > 0 {
             self.stepper_enable.set_low();
-            configure_timer(
-                &self.timer,
-                ((rpm as u32) * TICKS_PER_REV * MICROSTEPPING) / 60,
-            );
+            configure_timer(&self.timer, (rpm * TICKS_PER_REV * MICROSTEPPING) / 60);
         } else {
             self.stepper_enable.set_high();
             disable_timer(&self.timer);
@@ -46,6 +43,19 @@ impl DeviceState {
 }
 
 static STATE: Mutex<DeviceState> = Mutex::new_locked();
+
+fn parse_u32(s: &[u8]) -> Option<u32> {
+    let mut rc: u32 = 0;
+    for b in s {
+        if b.is_ascii_digit() {
+            rc = rc * 10 + (b - b'0') as u32;
+        } else {
+            return None;
+        }
+    }
+
+    Some(rc)
+}
 
 #[arduino_hal::entry]
 fn main() -> ! {
@@ -73,16 +83,39 @@ fn main() -> ! {
     }
 
     loop {
-        let b = nb::block!(serial.read()).void_unwrap();
+        let mut line: [u8; 16] = [0; 16];
+        let mut i = 0;
+        let mut terminated = false;
 
-        ufmt::uwriteln!(&mut serial, "Got {}!\r", b).void_unwrap();
+        while i < 16 {
+            let b = nb::block!(serial.read()).void_unwrap();
 
-        if b == 0x31 {
-            ufmt::uwriteln!(&mut serial, "start drum\r").void_unwrap();
-            STATE.lock().drum_command(60);
-        } else if b == 0x30 {
-            ufmt::uwriteln!(&mut serial, "stop drum\r").void_unwrap();
-            STATE.lock().drum_command(0);
+            if b == b'\n' {
+                continue;
+            }
+
+            if b == b'\r' {
+                serial.write_byte(b'\r');
+                serial.write_byte(b'\n');
+                terminated = true;
+                break;
+            }
+            serial.write_byte(b);
+            line[i] = b;
+            i = i + 1;
+        }
+
+        if terminated {
+            if line[0] == b'D' {
+                if let Some(command_rpm) = parse_u32(&line[1..i]) {
+                    ufmt::uwriteln!(&mut serial, "drum speed {}\r", command_rpm).void_unwrap();
+                    STATE.lock().drum_command(command_rpm);
+                } else {
+                    ufmt::uwriteln!(&mut serial, "drum speed parse error\r").void_unwrap();
+                }
+            }
+        } else {
+            ufmt::uwriteln!(&mut serial, "line buffer overflow, resetting\r").void_unwrap();
         }
     }
 }
@@ -135,4 +168,14 @@ fn TIMER1_COMPA() {
 #[no_mangle]
 fn abort() -> ! {
     loop {}
+}
+
+// why the hell is this my problem
+#[no_mangle]
+pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: isize) -> *const u8 {
+    for idx in 0..n {
+        *s.offset(idx) = c;
+    }
+
+    return s;
 }
